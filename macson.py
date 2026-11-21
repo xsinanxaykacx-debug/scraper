@@ -492,7 +492,8 @@ class CheckpointLog:
 
 
 def _logu_uygula(log_yolu, genis_veri, hatalar):
-    log_yolu = Path(log_yolu)    if not log_yolu.exists():
+    log_yolu = Path(log_yolu)
+    if not log_yolu.exists():
         return 0
     sayi = 0
     bozuk = 0
@@ -991,7 +992,8 @@ async def matchdata_cek_async(mac_id):
         veri = _json_loads_tolerant(metin)
     except json.JSONDecodeError as hata:
         raise ValueError(f"MatchData JSON parse hatası: {hata}")
-    if not isinstance(veri, dict):        raise ValueError(f"MatchData dict değil: {type(veri)}")
+    if not isinstance(veri, dict):
+        raise ValueError(f"MatchData dict değil: {type(veri)}")
     return veri
 
 
@@ -2342,7 +2344,8 @@ async def iddaa_bahis_oranlari_async(basla, son):
                 if isinstance(r, Exception):
                     try:
                         row = kalan_df_tur.iloc[i]
-                        mid = str(row["Maç ID"])                    except Exception:
+                        mid = str(row["Maç ID"])
+                    except Exception:
                         continue
                     try:
                         hata_ekle(hatalar, {
