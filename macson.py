@@ -1828,6 +1828,9 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
                 if not mac_id.isdigit() or not ev or not dep:
                     continue
                 iddaa_kodu = metin_temizle(kayit[14]) if len(kayit) > 14 else ""
+                # İddaa kodu boş olan futbol maçlarını kesinlikle listeye alma.
+                if not iddaa_kodu:
+                    continue
                 iy_skor = metin_temizle(kayit[7]) if len(kayit) > 7 else ""
                 if not iy_skor:
                     iy_ev = sayiya_cevir(kayit[10]) if len(kayit) > 10 else None
@@ -2140,6 +2143,26 @@ async def iddaa_bahis_oranlari_async(basla, son):
         if df_mac.empty:
             print("Maç listesi boş veya alınamadı.")
             return
+
+        # Eski checkpoint/ara kayıtlarda kalmış İddaa kodsuz maçları da ele.
+        if "İddaa Kodu" not in df_mac.columns:
+            df_mac["İddaa Kodu"] = ""
+        df_mac["İddaa Kodu"] = df_mac["İddaa Kodu"].map(metin_temizle)
+        kodlu_once = len(df_mac)
+        df_mac = df_mac[df_mac["İddaa Kodu"] != ""].copy()
+        kodsuz_silinen = kodlu_once - len(df_mac)
+        if kodsuz_silinen:
+            print(f"[FİLTRE] İddaa kodu olmayan {kodsuz_silinen:,} maç listeden çıkarıldı.")
+        if df_mac.empty:
+            print("İddaa kodlu futbol maçı bulunamadı.")
+            return
+
+        # Checkpoint'teki eski, İddaa kodu boş kayıtları Excel verisinden de temizle.
+        kodlu_idler = set(df_mac["Maç ID"].astype(str))
+        genis_veri = {
+            str(mid): bilgi for mid, bilgi in genis_veri.items()
+            if str(mid) in kodlu_idler
+        }
 
         df_mac["Maç ID"] = df_mac["Maç ID"].astype(str)
         df_mac = df_mac.drop_duplicates(subset=["Maç ID"], keep="first").reset_index(drop=True)
