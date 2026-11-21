@@ -134,6 +134,9 @@ MAC_KOLONLARI = [
 
 HATA_KOLONLARI = ["Tarih", "ID", "Maç", "Hata"]
 
+# Takip amaçlı iç alanlar; Excel'de oran sütunu olarak gösterilmez.
+METADATA_KOLONLARI = {"İY Skor Kaynağı", "Oran Durumu", "İstatistik Durumu"}
+
 
 # ============================================================
 # YARDIMCILAR (erken)
@@ -394,7 +397,7 @@ def oran_kolonlarini_tamamla(oran_kolonlari, genis_veri):
         if not isinstance(bilgi, dict):
             continue
         for kolon in bilgi.keys():
-            if kolon.startswith("__"):
+            if kolon.startswith("__") or kolon in METADATA_KOLONLARI:
                 continue
             if kolon not in MAC_KOLONLARI and not str(kolon).startswith(ISTATISTIK_ON_EK):
                 oran_kolonu_ekle(oran_kolonlari, kolon)
@@ -1302,7 +1305,7 @@ def arsiv_mac_bilgisi_cikar(soup, row):
     if not iy_skor:
         iy_skor = _skor_duzenle(row.get("İY Skor", ""))
         if iy_skor: iy_kaynak = "Maç listesi ilk yarı skoru"
-    sonuc["İY Skor"], sonuc["İY Skor Kaynağı"], sonuc["Maç Slug"] = iy_skor, iy_kaynak, ""
+    sonuc["İY Skor"], sonuc["Maç Slug"] = iy_skor, ""
     return sonuc
 
 
@@ -1621,6 +1624,7 @@ def hata_raporu_yaz(hatalar, dosya):
 def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatalar):
     """Excel'e temel maç bilgileri ve İddaa oranlarını yazar."""
     oranlar = [k for k in oran_kolonlari if k not in MAC_KOLONLARI
+               and k not in METADATA_KOLONLARI
                and not str(k).startswith(ISTATISTIK_ON_EK)]
     tum_kolonlar = MAC_KOLONLARI + oranlar
     df_genis = pd.DataFrame(list(genis_veri.values())).reindex(columns=tum_kolonlar)
@@ -2156,12 +2160,10 @@ async def iddaa_bahis_oranlari_async(basla, son):
             bilgi["Maç ID"] = mac_id
             if not bilgi.get("İY Skor") and metin_temizle(row.get("İY Skor", "")):
                 bilgi["İY Skor"] = _skor_duzenle(row.get("İY Skor", ""))
-                bilgi["İY Skor Kaynağı"] = "Maç listesi ilk yarı skoru"
-            elif bilgi.get("İY Skor") and not bilgi.get("İY Skor Kaynağı"):
-                bilgi["İY Skor Kaynağı"] = "Önceki kayıt; kaynak bilgisi yok"
+            bilgi.pop("İY Skor Kaynağı", None)
+            bilgi.pop("İstatistik Durumu", None)
             bilgi.setdefault("Arşiv Sayfa Durumu", "")
             bilgi.setdefault("Oran Durumu", "Oran bulunamadı")
-            bilgi.setdefault("İstatistik Durumu", "İstatistik bulunamadı")
 
         oran_kolonlarini_tamamla(oran_kolonlari, genis_veri)
         tamamlanan_idler = {
@@ -2324,14 +2326,10 @@ async def iddaa_bahis_oranlari_async(basla, son):
                     bilgi = genis_veri.get(mac_id, {})
                     ev_k = "E:✓" if metin_temizle(bilgi.get("Ev Kadro", "")) else "E:✗"
                     dep_k = "D:✓" if metin_temizle(bilgi.get("Deplasman Kadro", "")) else "D:✗"
-                    ist_flag = ("İ:✓" if str(bilgi.get("İstatistik Durumu", ""))
-                                .startswith("bulundu") else "İ:✗")
                     print(
                         f"[TUR {tur}] İşlem: {oturumda_islenen:,} | "
                         f"Tamamlanan: {len(tamamlanan_idler):,}/{toplam_mac:,} | "
                         f"Sayfa: {bilgi.get('Arşiv Sayfa Durumu', '')} | "
-                        f"Oran: {bilgi.get('Oran Durumu', '')} | "
-                        f"{ev_k}/{dep_k} | {ist_flag} | "
                         f"Geçen: {sure_formatla(gecen)}"
                     )
                 except Exception:
