@@ -2457,16 +2457,26 @@ async def iddaa_bahis_oranlari_async(basla, son):
         else:
             son_liste = []
 
+        # Ctrl+C sırasında asyncio.run ana görevi iptal etse bile final
+        # JSON/Excel kaydı arka plandaki görev olarak tamamlanır.
+        kayit_gorevi = asyncio.create_task(guvenli_tam_kaydet(
+            yollar, basla, son, genis_veri, hatalar, oran_kolonlari,
+            mac_listesi_=son_liste,
+            mac_listesi_durum_=mac_listesi_durum,
+            excel_dosya_=excel_dosya, hata_dosya_=hata_dosya,
+            mac_log_=mac_log, excel_yazilsin_=True,
+            tamamlanan_gunler_=tamamlanan_gunler,
+            kalici_hata_idler_=kalici_hata_idler,
+        ))
         try:
-            json_ok, excel_ok, hata_ok = await guvenli_tam_kaydet(
-                yollar, basla, son, genis_veri, hatalar, oran_kolonlari,
-                mac_listesi_=son_liste,
-                mac_listesi_durum_=mac_listesi_durum,
-                excel_dosya_=excel_dosya, hata_dosya_=hata_dosya,
-                mac_log_=mac_log, excel_yazilsin_=True,
-                tamamlanan_gunler_=tamamlanan_gunler,
-                kalici_hata_idler_=kalici_hata_idler,
-            )
+            json_ok, excel_ok, hata_ok = await asyncio.shield(kayit_gorevi)
+        except asyncio.CancelledError:
+            # İlk Ctrl+C iptali final kaydını yarıda kesmesin.
+            try:
+                json_ok, excel_ok, hata_ok = await kayit_gorevi
+            except Exception as kayit_hatasi:
+                print(f"[FINAL KAYIT HATASI] {kayit_hatasi}")
+                json_ok = excel_ok = hata_ok = False
         except Exception as kayit_hatasi:
             print(f"[FINAL KAYIT HATASI] {kayit_hatasi}")
             json_ok = excel_ok = hata_ok = False
