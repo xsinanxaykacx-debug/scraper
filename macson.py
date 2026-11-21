@@ -2157,11 +2157,11 @@ async def iddaa_bahis_oranlari_async(basla, son):
             print("İddaa kodlu futbol maçı bulunamadı.")
             return
 
-        # Checkpoint'teki eski, İddaa kodu boş kayıtları Excel verisinden de temizle.
-        kodlu_idler = set(df_mac["Maç ID"].astype(str))
+        # Checkpoint'teki İddaa kodu boş eski kayıtları Excel verisinden de temizle.
         genis_veri = {
             str(mid): bilgi for mid, bilgi in genis_veri.items()
-            if str(mid) in kodlu_idler
+            if isinstance(bilgi, dict)
+            and metin_temizle(bilgi.get("İddaa Kodu", ""))
         }
 
         df_mac["Maç ID"] = df_mac["Maç ID"].astype(str)
