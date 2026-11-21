@@ -1828,8 +1828,8 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
                 if not mac_id.isdigit() or not ev or not dep:
                     continue
                 iddaa_kodu = metin_temizle(kayit[14]) if len(kayit) > 14 else ""
-                # İddaa kodu boş olan futbol maçlarını kesinlikle listeye alma.
-                if not iddaa_kodu:
+                # Livedata kodsuz maçlarda 0 döndürür; yalnızca pozitif İddaa kodları geçerli.
+                if not iddaa_kodu.isdigit() or int(iddaa_kodu) <= 0:
                     continue
                 iy_skor = metin_temizle(kayit[7]) if len(kayit) > 7 else ""
                 if not iy_skor:
@@ -2149,7 +2149,11 @@ async def iddaa_bahis_oranlari_async(basla, son):
             df_mac["İddaa Kodu"] = ""
         df_mac["İddaa Kodu"] = df_mac["İddaa Kodu"].map(metin_temizle)
         kodlu_once = len(df_mac)
-        df_mac = df_mac[df_mac["İddaa Kodu"] != ""].copy()
+        df_mac = df_mac[
+            df_mac["İddaa Kodu"].map(
+                lambda x: str(x).isdigit() and int(str(x)) > 0
+            )
+        ].copy()
         kodsuz_silinen = kodlu_once - len(df_mac)
         if kodsuz_silinen:
             print(f"[FİLTRE] İddaa kodu olmayan {kodsuz_silinen:,} maç listeden çıkarıldı.")
