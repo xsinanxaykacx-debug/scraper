@@ -66,12 +66,7 @@ def _lig_uygun_mu(yarisma):
 
 
 def _lig_filtresi_imzasi():
-    parcalar = []
-    for kod in sorted(AKTIF_GRUPLAR):
-        parcalar.append(kod)
-        for lig_id, ulke_id in sorted(ULKE_GRUPLARI[kod]["ligler"]):
-            parcalar.append(f"{lig_id}-{ulke_id}")
-    return "|".join(parcalar)
+    return "ALL_IDDAA"
 
 
 # ============================================================
@@ -497,8 +492,7 @@ class CheckpointLog:
 
 
 def _logu_uygula(log_yolu, genis_veri, hatalar):
-    log_yolu = Path(log_yolu)
-    if not log_yolu.exists():
+    log_yolu = Path(log_yolu)    if not log_yolu.exists():
         return 0
     sayi = 0
     bozuk = 0
@@ -997,8 +991,7 @@ async def matchdata_cek_async(mac_id):
         veri = _json_loads_tolerant(metin)
     except json.JSONDecodeError as hata:
         raise ValueError(f"MatchData JSON parse hatası: {hata}")
-    if not isinstance(veri, dict):
-        raise ValueError(f"MatchData dict değil: {type(veri)}")
+    if not isinstance(veri, dict):        raise ValueError(f"MatchData dict değil: {type(veri)}")
     return veri
 
 
@@ -1272,6 +1265,7 @@ def ilk_yari_skoru_scriptlerde_ara(soup):
 
 
 def arsiv_mac_bilgisi_cikar(soup, row):
+    """Temel maç bilgisini alır; kadro, yedek ve olay verisi çekmez."""
     info = soup.select_one(".match-info-wrapper")
     if info is None:
         raise ValueError("Arşiv sayfasında .match-info-wrapper bulunamadı.")
@@ -1283,73 +1277,30 @@ def arsiv_mac_bilgisi_cikar(soup, row):
     tarih_es = re.search(r"(\d{1,2}\.\d{1,2}\.\d{4})\s+(\d{1,2}:\d{2})", tarih_metin)
     if tarih_es:
         try:
-            dt = datetime.strptime(
-                f"{tarih_es.group(1)} {tarih_es.group(2)}", "%d.%m.%Y %H:%M")
-            sonuc["Tarih"] = dt.strftime("%d-%m-%Y")
-            sonuc["Saat"] = dt.strftime("%H:%M")
+            dt = datetime.strptime(f"{tarih_es.group(1)} {tarih_es.group(2)}", "%d.%m.%Y %H:%M")
+            sonuc["Tarih"], sonuc["Saat"] = dt.strftime("%d-%m-%Y"), dt.strftime("%H:%M")
         except ValueError:
-            sonuc["Tarih"] = metin_temizle(row.get("Tarih", ""))
-            sonuc["Saat"] = metin_temizle(row.get("Saat", ""))
+            sonuc["Tarih"], sonuc["Saat"] = metin_temizle(row.get("Tarih", "")), metin_temizle(row.get("Saat", ""))
     else:
-        sonuc["Tarih"] = metin_temizle(row.get("Tarih", ""))
-        sonuc["Saat"] = metin_temizle(row.get("Saat", ""))
-    ev_el = info.select_one("a.left-block-team-name")
-    dep_el = info.select_one("a.r-left-block-team-name")
-    ev = (metin_temizle(ev_el.get_text(" ", strip=True))
-          if ev_el else metin_temizle(row.get("Ev Sahibi", "")))
-    dep = (metin_temizle(dep_el.get_text(" ", strip=True))
-           if dep_el else metin_temizle(row.get("Deplasman", "")))
-    sonuc["Ev Sahibi"] = ev
-    sonuc["Deplasman"] = dep
-    sonuc["Maç"] = f"{ev} vs {dep}" if ev and dep else metin_temizle(row.get("Maç", ""))
-    sonuc["Maç ID"] = str(row.get("Maç ID", ""))
-    sonuc["İddaa Kodu"] = str(row.get("İddaa Kodu", ""))
-    durum_el = info.select_one("#dvStatusText")
+        sonuc["Tarih"], sonuc["Saat"] = metin_temizle(row.get("Tarih", "")), metin_temizle(row.get("Saat", ""))
+    ev_el, dep_el = info.select_one("a.left-block-team-name"), info.select_one("a.r-left-block-team-name")
+    ev = metin_temizle(ev_el.get_text(" ", strip=True)) if ev_el else metin_temizle(row.get("Ev Sahibi", ""))
+    dep = metin_temizle(dep_el.get_text(" ", strip=True)) if dep_el else metin_temizle(row.get("Deplasman", ""))
+    sonuc.update({"Ev Sahibi": ev, "Deplasman": dep, "Maç": f"{ev} vs {dep}" if ev and dep else metin_temizle(row.get("Maç", "")),
+                  "Maç ID": str(row.get("Maç ID", "")), "İddaa Kodu": str(row.get("İddaa Kodu", ""))})
+    durum_el, skor_el, iy_el = info.select_one("#dvStatusText"), info.select_one("#dvScoreText"), info.select_one("#dvHTScoreText")
     sonuc["Maç Durumu"] = metin_temizle(durum_el.get_text(" ", strip=True)) if durum_el else ""
-    skor_el = info.select_one("#dvScoreText")
     skor = _skor_duzenle(skor_el.get_text(" ", strip=True)) if skor_el else ""
     sonuc["Skor"] = skor or metin_temizle(row.get("Skor", ""))
-    iy_el = info.select_one("#dvHTScoreText")
     iy_skor = _skor_duzenle(iy_el.get_text(" ", strip=True)) if iy_el else ""
     iy_kaynak = "Arşiv HTML #dvHTScoreText" if iy_skor else ""
     if not iy_skor:
         iy_skor, js_kaynak = ilk_yari_skoru_scriptlerde_ara(soup)
-        if iy_skor:
-            iy_kaynak = js_kaynak
+        if iy_skor: iy_kaynak = js_kaynak
     if not iy_skor:
         iy_skor = _skor_duzenle(row.get("İY Skor", ""))
-        if iy_skor:
-            iy_kaynak = "Maç listesi ilk yarı skoru"
-    sonuc["İY Skor"] = iy_skor
-    sonuc["İY Skor Kaynağı"] = iy_kaynak
-    seyirci_el = info.select_one(".left-block .hf-match-score")
-    seyirci_metin = metin_temizle(seyirci_el.get_text(" ", strip=True)) if seyirci_el else ""
-    seyirci_es = re.search(r"Seyirci\s*:\s*(.+)", seyirci_metin, flags=re.IGNORECASE)
-    sonuc["Seyirci"] = metin_temizle(seyirci_es.group(1)) if seyirci_es else ""
-    stadyum = info.select_one('.match-info-wrapper-bottom a[itemprop="location"]')
-    sonuc["Stadyum"] = metin_temizle(stadyum.get_text(" ", strip=True)) if stadyum else ""
-    hakem = info.select_one('.match-info-wrapper-bottom a[href*="/Hakem/"]')
-    sonuc["Hakem"] = metin_temizle(hakem.get_text(" ", strip=True)) if hakem else ""
-    ev_hoca = info.select_one(".left-block .coach a")
-    dep_hoca = info.select_one(".right-block .r-coach a")
-    sonuc["Ev Sahibi Teknik Direktör"] = (
-        metin_temizle(ev_hoca.get_text(" ", strip=True)) if ev_hoca else "")
-    sonuc["Deplasman Teknik Direktör"] = (
-        metin_temizle(dep_hoca.get_text(" ", strip=True)) if dep_hoca else "")
-    alt = info.select_one(".match-info-wrapper-bottom .match-info-detail-text")
-    if alt:
-        alt_kopya = BeautifulSoup(str(alt), "html.parser")
-        for node in alt_kopya.select("a, img, script, style"):
-            node.decompose()
-        tv = metin_temizle(alt_kopya.get_text(" ", strip=True))
-        tv = re.sub(r"^Tv Yayını\s*", "", tv, flags=re.IGNORECASE)
-        sonuc["TV Yayını"] = tv.strip(" ,;|")
-    else:
-        sonuc["TV Yayını"] = ""
-    sonuc["Maç Slug"] = ""
-
-    kadro_ve_olaylar = ana_html_den_kadro_ve_olaylar(soup)
-    sonuc.update(kadro_ve_olaylar)
+        if iy_skor: iy_kaynak = "Maç listesi ilk yarı skoru"
+    sonuc["İY Skor"], sonuc["İY Skor Kaynağı"], sonuc["Maç Slug"] = iy_skor, iy_kaynak, ""
     return sonuc
 
 
@@ -1497,7 +1448,6 @@ async def _istatistik_ajax_cek_async(mac_id):
             if metin.lower().startswith(("<!doctype", "<html")):
                 son_hata = f"HTML yanıtı: {metin[:80]!r}"
                 continue
-
             if not metin or metin in ("null", "[]", "{}"):
                 continue
 
@@ -1548,6 +1498,7 @@ def hata_sayfasi_mi(soup):
 
 
 async def get_bahis_oranlari_async(row):
+    """Arşivden temel maç bilgisini ve İddaa oranlarını alır; istatistik çağrısı yapmaz."""
     url = mac_arsiv_url(row)
     cevap = await istek_yap_async(url)
     soup = BeautifulSoup(cevap.text, "html.parser")
@@ -1555,17 +1506,9 @@ async def get_bahis_oranlari_async(row):
         raise KaliciHata(f"Arşiv hata sayfası döndürdü: {url}")
     if soup.select_one(".match-info-wrapper") is None:
         raise KaliciHata(f"Arşiv maç içeriği bulunamadı: {url}")
-
-    mac_bilgisi = arsiv_mac_bilgisi_cikar(soup, row)
-    oranlar = arsiv_sayfa_oranlari(soup)
-    mac_id_ver = metin_temizle(row.get("Maç ID", ""))
-    istatistikler, ist_durum = await istatistikleri_cikar_async(soup, mac_id=mac_id_ver)
-
     return {
-        "mac_bilgisi": mac_bilgisi,
-        "oranlar": oranlar,
-        "istatistikler": istatistikler,
-        "istatistik_durum": ist_durum,
+        "mac_bilgisi": arsiv_mac_bilgisi_cikar(soup, row),
+        "oranlar": arsiv_sayfa_oranlari(soup),
         "kaynak_url": url,
     }
 
@@ -1674,18 +1617,11 @@ def hata_raporu_yaz(hatalar, dosya):
 
 
 def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatalar):
-    oranlar = [k for k in oran_kolonlari
-               if k not in MAC_KOLONLARI and not str(k).startswith(ISTATISTIK_ON_EK)]
-    ist_kolonlari = []
-    for bilgi in genis_veri.values():
-        if not isinstance(bilgi, dict):
-            continue
-        for kolon in bilgi.keys():
-            if str(kolon).startswith(ISTATISTIK_ON_EK) and kolon not in ist_kolonlari:
-                ist_kolonlari.append(kolon)
-    tum_kolonlar = MAC_KOLONLARI + oranlar + ist_kolonlari
+    """Excel'e temel maç bilgileri ve İddaa oranlarını yazar."""
+    oranlar = [k for k in oran_kolonlari if k not in MAC_KOLONLARI
+               and not str(k).startswith(ISTATISTIK_ON_EK)]
+    tum_kolonlar = MAC_KOLONLARI + oranlar
     df_genis = pd.DataFrame(list(genis_veri.values())).reindex(columns=tum_kolonlar)
-
     excel_ok = _excel_yaz_guvenli(df_genis, excel_dosya)
     hata_ok = hata_raporu_yaz(hatalar, hata_dosya)
     return excel_ok, hata_ok
@@ -1878,7 +1814,8 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
                 yarisma = kayit[36]
                 if not isinstance(yarisma, list) or len(yarisma) < 12:
                     continue
-                if sayiya_cevir(yarisma[11]) != 1 or not _lig_uygun_mu(yarisma):
+                # Ülke/lig filtresi yok; yalnızca İddaa kodlu futbol maçları.
+                if sayiya_cevir(yarisma[11]) != 1:
                     continue
                 mac_id = metin_temizle(kayit[0])
                 ev, dep = metin_temizle(kayit[2]), metin_temizle(kayit[4])
@@ -1996,144 +1933,52 @@ def _matchdata_denenmeli_mi(bilgi):
 # ============================================================
 
 async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
+    """Tek maçın İddaa oranlarını çeker ve kaydeder."""
     mac_id = str(row["Maç ID"])
     bilgi = genis_veri[mac_id]
-
-    if (_tamamlanma_kriteri(bilgi) and _matchdata_denenmeli_mi(bilgi)):
-        print(f"[TUR {tur}] [FALLBACK] {mac_id} - Sadece kadro/olay eksik, "
-              f"MatchData çekiliyor...")
-        bilgi, hatalar, basarili = await _matchdata_uygula_async(
-            bilgi, mac_id, hatalar)
-        if basarili:
-            bilgi["__matchdata_denendi"] = "1"
-        else:
-            print(f"[TUR {tur}] [FALLBACK] {mac_id} - MatchData başarısız, "
-                  f"sonraki turda tekrar denenecek.")
-        return ("ok" if basarili else "matchdata_eksik"), hatalar
-
     try:
         sonuc = await get_bahis_oranlari_async(row.to_dict())
-
         for alan, deger in sonuc["mac_bilgisi"].items():
-            if deger not in (None, ""):
-                bilgi[alan] = deger
+            if deger not in (None, ""): bilgi[alan] = deger
         bilgi["Kaynak URL"] = sonuc["kaynak_url"]
         _bilgiden_oran_istatistik_sil(bilgi, oran_kolonlari)
-
         gecerli_oranlar = []
         for bahis in sonuc["oranlar"]:
             market = metin_temizle(bahis.get("Bahis Türü", ""))
             secim = metin_temizle(bahis.get("Seçim", ""))
             oran = oran_temizle(bahis.get("Oran", ""))
-            if not oran:
-                continue
+            if not oran: continue
             kolon = bahis_basligi(market, secim)
             oran_kolonu_ekle(oran_kolonlari, kolon)
             gecerli_oranlar.append((kolon, oran))
-
         if gecerli_oranlar:
-            for kolon, oran in gecerli_oranlar:
-                bilgi[kolon] = oran
-            bilgi["Oran Durumu"] = "Oran bulundu"
-            bilgi["Arşiv Sayfa Durumu"] = "Tamam"
-            hatalar = hata_kayitlarini_temizle(
-                hatalar, mac_id,
-                icerenler=("oran bulunamadı",),
-                baslangiclar=("ARŞİV: HTTP",))
+            for kolon, oran in gecerli_oranlar: bilgi[kolon] = oran
+            bilgi["Oran Durumu"], bilgi["Arşiv Sayfa Durumu"] = "Oran bulundu", "Tamam"
+            hatalar = hata_kayitlarini_temizle(hatalar, mac_id,
+                icerenler=("oran bulunamadı",), baslangiclar=("ARŞİV: HTTP",))
         else:
-            bilgi["Oran Durumu"] = "Arşiv sayfasında oran bulunamadı"
-            bilgi["Arşiv Sayfa Durumu"] = "Oran Eksik"
-            hatalar = hata_kayitlarini_temizle(
-                hatalar, mac_id, icerenler=("oran bulunamadı",))
-            hata_ekle(hatalar, {
-                "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
+            bilgi["Oran Durumu"], bilgi["Arşiv Sayfa Durumu"] = "Arşiv sayfasında oran bulunamadı", "Oran Eksik"
+            hatalar = hata_kayitlarini_temizle(hatalar, mac_id, icerenler=("oran bulunamadı",))
+            hata_ekle(hatalar, {"Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
                 "Maç": bilgi.get("Maç", ""),
-                "Hata": f"Arşiv sayfası açıldı ancak geçerli oran yok. "
-                        f"Tur {tur}/{MAKS_TUR}."
-            })
-
-        for kolon, deger in sonuc["istatistikler"].items():
-            bilgi[kolon] = deger
-        ist_durum = sonuc.get("istatistik_durum", "kapsayici_yok")
-        if str(ist_durum).startswith("bulundu"):
-            bilgi["İstatistik Durumu"] = ist_durum
-        elif ist_durum == "kapsayici_yok":
-            bilgi["İstatistik Durumu"] = "İstatistik kapsayıcısı yok"
-        elif str(ist_durum).startswith("hata"):
-            bilgi["İstatistik Durumu"] = ist_durum
-            hata_ekle(hatalar, {
-                "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
-                "Maç": bilgi.get("Maç", ""),
-                "Hata": f"İSTATİSTİK: {ist_durum}",
-            })
-        else:
-            bilgi["İstatistik Durumu"] = "İstatistik bilinmiyor"
-
-        if not bilgi.get("İY Skor"):
-            bilgi["İY Skor Kaynağı"] = ""
-            hatalar = hata_kayitlarini_temizle(
-                hatalar, mac_id, baslangiclar=("İY SKOR:",))
-            hata_ekle(hatalar, {
-                "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
-                "Maç": bilgi.get("Maç", ""),
-                "Hata": "İY SKOR: arşiv alanı/JavaScript ve maç listesi "
-                        "kaynağında skor bulunamadı."
-            })
-        else:
-            hatalar = hata_kayitlarini_temizle(
-                hatalar, mac_id, baslangiclar=("İY SKOR:",))
-        hatalar = hata_kayitlarini_temizle(
-            hatalar, mac_id, baslangiclar=("ARŞİV: HTTP",))
-
-        durum_sonuc = "ok"
-        if MATCHDATA_AKTIF and _matchdata_denenmeli_mi(bilgi):
-            etiket = ("kadro" if (not metin_temizle(bilgi.get("Ev Kadro", ""))
-                                   or not metin_temizle(bilgi.get("Deplasman Kadro", "")))
-                      else "olaylar")
-            print(f"[TUR {tur}] [FALLBACK] {mac_id} - {etiket} eksik, "
-                  f"MatchData çekiliyor...")
-            bilgi, hatalar, basarili = await _matchdata_uygula_async(
-                bilgi, mac_id, hatalar)
-            if basarili:
-                bilgi["__matchdata_denendi"] = "1"
-            else:
-                durum_sonuc = "matchdata_eksik"
-                print(f"[TUR {tur}] [FALLBACK] {mac_id} - MatchData başarısız; "
-                      "sonraki turda tekrar denenecek.")
-
-        return durum_sonuc, hatalar
-
+                "Hata": f"Arşiv sayfası açıldı ancak geçerli İddaa oranı yok. Tur {tur}/{MAKS_TUR}."})
+        hatalar = hata_kayitlarini_temizle(hatalar, mac_id, baslangiclar=("ARŞİV: HTTP",))
+        return "ok", hatalar
     except ErisimKisitlamaHatasi as hata:
         bilgi["Arşiv Sayfa Durumu"] = f"Erişim Hatası (HTTP {hata.durum_kodu})"
         bilgi["Oran Durumu"] = f"Çekilemedi (HTTP {hata.durum_kodu})"
-        bilgi["İstatistik Durumu"] = f"Çekilemedi (HTTP {hata.durum_kodu})"
-        hatalar = hata_kayitlarini_temizle(
-            hatalar, mac_id, baslangiclar=("ARŞİV:",))
-        hata_ekle(hatalar, {
-            "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
-            "Maç": bilgi.get("Maç", ""),
-            "Hata": f"ARŞİV: HTTP {hata.durum_kodu}; URL={hata.url}"
-        })
-        if hata.durum_kodu == 429:
-            print(f"[TUR {tur}] [MAÇ HTTP 429] {mac_id} | atlandı.")
-            return "kisitlama_429", hatalar
-        elif hata.durum_kodu == 401:
-            print(f"[TUR {tur}] [MAÇ HTTP 401] {mac_id} | kalıcı erişim reddi.")
-            return "kisitlama_401", hatalar
-        else:
-            print(f"[TUR {tur}] [MAÇ HTTP {hata.durum_kodu}] {mac_id} | "
-                  f"kalıcı erişim reddi.")
-            return "kisitlama_403", hatalar
+        hatalar = hata_kayitlarini_temizle(hatalar, mac_id, baslangiclar=("ARŞİV:",))
+        hata_ekle(hatalar, {"Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
+            "Maç": bilgi.get("Maç", ""), "Hata": f"ARŞİV: HTTP {hata.durum_kodu}; URL={hata.url}"})
+        if hata.durum_kodu == 429: return "kisitlama_429", hatalar
+        if hata.durum_kodu == 401: return "kisitlama_401", hatalar
+        return "kisitlama_403", hatalar
     except Exception as hata:
         bilgi["Arşiv Sayfa Durumu"] = "Hata"
         bilgi["Oran Durumu"] = "Çekilemedi (parse/ağ hatası)"
-        bilgi["İstatistik Durumu"] = "Çekilemedi (parse/ağ hatası)"
-        hatalar = hata_kayitlarini_temizle(
-            hatalar, mac_id, baslangiclar=("ARŞİV:",))
-        hata_ekle(hatalar, {
-            "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
-            "Maç": bilgi.get("Maç", ""), "Hata": f"ARŞİV: {hata}"
-        })
+        hatalar = hata_kayitlarini_temizle(hatalar, mac_id, baslangiclar=("ARŞİV:",))
+        hata_ekle(hatalar, {"Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
+            "Maç": bilgi.get("Maç", ""), "Hata": f"ARŞİV: {hata}"})
         return "hata", hatalar
 
 
@@ -2497,8 +2342,7 @@ async def iddaa_bahis_oranlari_async(basla, son):
                 if isinstance(r, Exception):
                     try:
                         row = kalan_df_tur.iloc[i]
-                        mid = str(row["Maç ID"])
-                    except Exception:
+                        mid = str(row["Maç ID"])                    except Exception:
                         continue
                     try:
                         hata_ekle(hatalar, {
@@ -2668,20 +2512,9 @@ async def iddaa_bahis_oranlari_async(basla, son):
 # ÇALIŞTIR
 # ============================================================
 
-def _gruplari_coz(grup_str):
-    if not grup_str or grup_str.strip().upper() in {"ALL", "HEPSI", "HEPSİ"}:
-        return list(ULKE_GRUPLARI.keys()), "ALL"
-    kodlar = [k.strip().upper() for k in grup_str.split(",") if k.strip()]
-    gecersiz = [k for k in kodlar if k not in ULKE_GRUPLARI]
-    if gecersiz:
-        raise SystemExit(f"Geçersiz grup: {', '.join(gecersiz)}")
-    gorulen = set()
-    kodlar_temiz = []
-    for k in kodlar:
-        if k not in gorulen:
-            gorulen.add(k)
-            kodlar_temiz.append(k)
-    return kodlar_temiz, "_".join(kodlar_temiz)
+def _gruplari_coz(grup_str=None):
+    # Eski --grup parametresi kabul edilir; artık ülke/lig filtresi uygulanmaz.
+    return [], "ALL_IDDAA"
 
 
 if __name__ == "__main__":
@@ -2692,12 +2525,7 @@ if __name__ == "__main__":
 
     AKTIF_GRUPLAR, AKTIF_ETIKET = _gruplari_coz(args.grup)
     AKTIF_LIGLER = set()
-    for kod in AKTIF_GRUPLAR:
-        AKTIF_LIGLER.update(ULKE_GRUPLARI[kod]["ligler"])
-
-    print(f"[GRUP] {AKTIF_ETIKET} | "
-          f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
-          f"{len(AKTIF_LIGLER)} lig")
+    print("[KAPSAM] ALL | Tüm ülkeler ve ligler | Yalnızca İddaa kodlu futbol maçları")
 
     try:
         baslangic, bitis = tarih_araligi_iste()
